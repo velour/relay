@@ -3,19 +3,31 @@ package irc
 // Parsing of IRC messages as specified in RFC 1459.
 
 import (
-	"bufio"
+	"bytes"
 	"errors"
 	"fmt"
 	"io"
-	"strings"
 )
 
-// A Msg is the basic unit of communication
-// in the IRC protocol.
-type Msg struct {
-	// Raw is the raw message string.
-	Raw string
+// MaxBytes is the maximum length of a message in bytes.
+const MaxBytes = 512
 
+// TooLongError indicates that a received message was too long.
+type TooLongError struct {
+	// Message is the truncated message text.
+	Message []byte
+	// NTrunc is the number of truncated bytes.
+	NTrunc int
+}
+
+func (m TooLongError) Error() string {
+	return fmt.Sprintf("Message is too long (%d bytes truncated): %s",
+		m.NTrunc, m.Message)
+}
+
+// A Message is the basic unit of communication
+// in the IRC protocol.
+type Message struct {
 	// Origin is either the nick or server that
 	// originated the message.
 	Origin string
@@ -36,175 +48,79 @@ type Msg struct {
 	// message originated from a client.
 	Host string
 
-	// Cmd is the command.
-	Cmd string
+	// Command is the command.
+	Command string
 
-	// Args is the argument list.
-	Args []string
+	// Arguments is the argument list.
+	Arguments []string
 }
 
-// RawString returns the raw string representation
-// of a message.  If Raw is non-empty then it is
-// returned, otherwise a raw string is built from
-// the fields of the message.  If there is an error
-// generating the raw string then the string is
-// invalid and an error is returned.
-func (m Msg) RawString() (string, error) {
-	raw := ""
-	if m.Raw != "" {
-		raw = m.Raw
-		goto out
-	}
+// Bytes returns the byte representation of a message.
+// The returned message may be longer than MaxMessageLength bytes.
+func (m Message) Bytes() []byte {
+	buf := bytes.NewBuffer(nil)
 	if m.Origin != "" {
-		raw += ":" + m.Origin
+		buf.WriteRune(':')
+		buf.WriteString(m.Origin)
 		if m.User != "" {
-			raw += "!" + m.User + "@" + m.Host
+			buf.WriteRune('!')
+			buf.WriteString(m.User)
+			buf.WriteRune('@')
+			buf.WriteString(m.Host)
 		}
-		raw += " "
+		buf.WriteRune(' ')
 	}
-	raw += m.Cmd
-	for i, a := range m.Args {
-		if i == len(m.Args)-1 {
-			raw += " :" + a
+	buf.WriteString(m.Command)
+	for i, a := range m.Arguments {
+		if i == len(m.Arguments)-1 {
+			buf.WriteString(" :")
 		} else {
-			raw += " " + a
+			buf.WriteRune(' ')
 		}
+		buf.WriteString(a)
 	}
-out:
-	if len(raw) > MaxMsgLength-len(MsgMarker) {
-		return "", MsgTooLong{raw, len(raw) - (MaxMsgLength - len(MsgMarker))}
-	}
-	return strings.TrimRight(raw, "\n"), nil
+	buf.WriteString(eom)
+	return buf.Bytes()
 }
 
-// ParseMsg parses a message from
-// a raw message string.
-// BUG(eaburns): doesn't validate the message.
-func ParseMsg(data string) (Msg, error) {
-	var msg Msg
-	msg.Raw = data
+// eom is the end of message marker.
+const eom = "\r\n"
 
-	if data[0] == ':' {
-		var prefix string
-		prefix, data = splitString(data[1:], ' ')
-		msg.Origin, prefix = splitString(prefix, '!')
-		msg.User, msg.Host = splitString(prefix, '@')
-	}
-
-	msg.Cmd, data = splitString(data, ' ')
-
-	for len(data) > 0 {
-		var arg string
-		if data[0] == ':' {
-			arg, data = data[1:], ""
-		} else {
-			arg, data = splitString(data, ' ')
-		}
-		msg.Args = append(msg.Args, arg)
-	}
-	return msg, nil
-}
-
-// readMsg returns the next message from
-// the stream.  If error is non-nil then the message
-// is not valid.
-func readMsg(in *bufio.Reader) (Msg, error) {
-	data, err := readMsgData(in)
-	if err != nil {
-		if long, ok := err.(MsgTooLong); ok {
-			m, err := ParseMsg(long.Msg)
-			if err != nil {
-				return Msg{}, err
-			}
-			return m, long
-		}
-		return Msg{}, err
-	}
-	return ParseMsg(data)
-}
-
-// splitStrings returns two strings, the first
-// is the portion of the string before the
-// delimiter and the second is the portion
-// after the delimiter.  If the delimiter is not
-// in the string then the entire string is
-// before the delimiter.
-//
-// If the delimiter is a space ' ' then the
-// second argument has all leading
-// space characters stripped.
-func splitString(s string, delim rune) (string, string) {
-	i := strings.IndexRune(s, delim)
-	if i < 0 {
-		return s, ""
-	}
-	if delim != ' ' {
-		return s[:i], s[i+1:]
-	}
-	fst := s[:i]
-	for ; i < len(s) && s[i] == ' '; i++ {
-	}
-	return fst, s[i:]
-}
-
-// MaxMsgLength is the maximum length
-// of a message in bytes.
-const MaxMsgLength = 512
-
-// MsgMarker is the marker delineating messages
-// in the TCP stream.
-const MsgMarker = "\r\n"
-
-// MsgTooLong is returned as an error for a message that is longer than MaxMsgLength bytes.
-type MsgTooLong struct {
-	// Msg is the truncated message text.
-	Msg string
-	// NTrunc is the number of truncated bytes.
-	NTrunc int
-}
-
-func (m MsgTooLong) Error() string {
-	return fmt.Sprintf("Message is too long (%d bytes truncated): %s", m.NTrunc, m.Msg)
-}
-
-// readMsgData returns the raw data for the
-// next message from the stream.  On error the
-// returned string will be empty.
-func readMsgData(in *bufio.Reader) (string, error) {
+// Read returns the next message.
+func read(in io.ByteReader) (Message, error) {
 	var msg []byte
 	for {
 		switch c, err := in.ReadByte(); {
 		case err == io.EOF && len(msg) > 0:
-			return "", unexpected("end of file")
+			return Message{}, errors.New("unexpected end of file")
 
 		case err != nil:
-			return "", err
+			return Message{}, err
 
 		case c == '\000':
-			return "", unexpected("null")
+			return Message{}, errors.New("unexpected null")
 
-		case c == '\n':
-			// Technically an invalid message, but instead we just strip it.
+			//		case c == '\n':
+			//			// Technically an invalid message, but instead we just strip it.
 
 		case c == '\r':
-			c, err = in.ReadByte()
-			if err != nil {
-				if err == io.EOF {
-					err = unexpected("end of file")
-				}
-				return "", err
-			}
-			if c != '\n' {
-				return "", unexpected("carrage return")
-			}
-			if len(msg) == 0 {
+			switch c, err = in.ReadByte(); {
+			case err == io.EOF:
+				return Message{}, errors.New("unexpected end of file")
+			case err != nil:
+				return Message{}, err
+			case c != '\n':
+				return Message{}, errors.New("unexpected carrage return")
+			case len(msg) == 0:
 				continue
+			default:
+				return Parse(msg)
 			}
-			return string(msg), nil
 
-		case len(msg) >= MaxMsgLength-2:
+		case len(msg) >= MaxBytes-len(eom):
 			n, _ := junk(in)
-			return "", MsgTooLong{Msg: string(msg[:len(msg)-1]), NTrunc: n + 1}
+			err := TooLongError{Message: msg[:len(msg)-1], NTrunc: n + 1}
+			return Message{}, err
 
 		default:
 			msg = append(msg, c)
@@ -212,10 +128,7 @@ func readMsgData(in *bufio.Reader) (string, error) {
 	}
 }
 
-// Junk reads and discards bytes until the next
-// message marker is found, returning the number
-// of discarded non-marker bytes.
-func junk(in *bufio.Reader) (int, error) {
+func junk(in io.ByteReader) (int, error) {
 	var last byte
 	n := 0
 	for {
@@ -224,7 +137,7 @@ func junk(in *bufio.Reader) (int, error) {
 			return n, err
 		}
 		n++
-		if last == MsgMarker[0] && c == MsgMarker[1] {
+		if last == eom[0] && c == eom[1] {
 			break
 		}
 		last = c
@@ -232,14 +145,60 @@ func junk(in *bufio.Reader) (int, error) {
 	return n - 1, nil
 }
 
-// unexpected returns an error that describes
-// the recite of an unexpected character
-// in the message stream.
-func unexpected(what string) error {
-	return errors.New("unexpected " + what + " in message stream")
+// Parse parses a message.
+func Parse(data []byte) (Message, error) {
+	if len(data) > MaxBytes {
+		return Message{}, TooLongError{
+			Message: data[:MaxBytes],
+			NTrunc:  len(data) - MaxBytes,
+		}
+	}
+	if len(data) == 0 {
+		return Message{}, nil
+	}
+
+	var msg Message
+	if data[0] == ':' {
+		var prefix []byte
+		prefix, data = split(data[1:], ' ')
+		origin, prefix := split(prefix, '!')
+		user, host := split(prefix, '@')
+		msg.Origin = string(origin)
+		msg.User = string(user)
+		msg.Host = string(host)
+	}
+
+	cmd, data := split(data, ' ')
+	msg.Command = string(cmd)
+
+	for len(data) > 0 {
+		var arg []byte
+		if data[0] == ':' {
+			arg, data = data[1:], nil
+		} else {
+			arg, data = split(data, ' ')
+		}
+		msg.Arguments = append(msg.Arguments, string(arg))
+	}
+	return msg, nil
 }
 
-// Cmd names as listed in RFC 2812.
+func split(data []byte, delim byte) ([]byte, []byte) {
+	fs := bytes.SplitN(data, []byte{delim}, 2)
+	switch len(fs) {
+	case 0:
+		return nil, nil
+	case 1:
+		return fs[0], nil
+	default:
+		if delim == ' ' {
+			fs[1] = bytes.TrimLeft(fs[1], " ")
+		}
+		return fs[0], fs[1]
+	}
+}
+
+// Command names as listed in RFC 2812.
 const (
 	PASS                  = "PASS"
 	NICK                  = "NICK"
@@ -426,8 +385,8 @@ const (
 	ERR_USERSDONTMATCH    = "502"
 )
 
-// CmdNames is a map from command strings to their names.
-var CmdNames = map[string]string{
+// CommandNames is a map from command strings to their names.
+var CommandNames = map[string]string{
 	PASS:     "PASS",
 	NICK:     "NICK",
 	USER:     "USER",
