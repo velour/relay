@@ -2,6 +2,7 @@ package slack
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -195,10 +196,39 @@ func (c *Client) GroupsList() ([]Channel, error) {
 	return resp.Groups, nil
 }
 
+// PostMessage posts a message to the server with as the given username.
+func (c *Client) PostMessage(username, channel, text string) error {
+	var resp Response
+	err := c.do(&resp, "chat.postMessage",
+		"username="+username,
+		"as_user=false",
+		"channel="+channel,
+		"text="+text)
+	if err != nil {
+		return err
+	}
+	if !resp.OK {
+		return ResponseError{resp}
+	}
+	return nil
+}
+
 func (c *Client) do(resp interface{}, method string, args ...string) error {
 	u := api
 	u.Path = path.Join(u.Path, method)
-	u.RawQuery = "token=" + c.token + strings.Join(args, "&")
+	vals := make(url.Values)
+	vals["token"] = []string{c.token}
+	for _, a := range args {
+		if a == "" {
+			continue
+		}
+		fs := strings.SplitN(a, "=", 2)
+		if len(fs) != 2 {
+			return errors.New("bad arg: " + a)
+		}
+		vals[fs[0]] = []string{fs[1]}
+	}
+	u.RawQuery = vals.Encode()
 	httpResp, err := http.Get(u.String())
 	if err != nil {
 		return err
