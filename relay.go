@@ -142,6 +142,10 @@ func startSlack(ch chan<- message) (c *slack.Client, channelID string) {
 				}
 				log.Printf("slack sending message\n%#v\n\n", event)
 				ch <- message{who: *slackNick, channel: *slackChannel, text: text}
+			case "presence_change",
+				"reconnect_url",
+				"user_typing":
+				// Silence noisy events.
 			default:
 				log.Printf("slack event:\n%#v\n\n", event)
 			}
