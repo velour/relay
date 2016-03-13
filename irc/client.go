@@ -42,18 +42,18 @@ func dial(conn net.Conn, nick, fullname, pass string) (*Client, error) {
 
 func register(c *Client, nick, fullname, pass string) error {
 	if pass != "" {
-		if err := c.Write(PASS, pass); err != nil {
+		if err := c.Send(PASS, pass); err != nil {
 			return err
 		}
 	}
-	if err := c.Write(NICK, nick); err != nil {
+	if err := c.Send(NICK, nick); err != nil {
 		return err
 	}
-	if err := c.Write(USER, nick, "0", "*", fullname); err != nil {
+	if err := c.Send(USER, nick, "0", "*", fullname); err != nil {
 		return err
 	}
 	for {
-		msg, err := c.Read()
+		msg, err := c.Next()
 		if err != nil {
 			return err
 		}
@@ -78,12 +78,12 @@ func register(c *Client, nick, fullname, pass string) error {
 
 // Close closes the connection.
 func (c *Client) Close() error {
-	c.Write(QUIT)
+	c.Send(QUIT)
 	return c.conn.Close()
 }
 
-// WriteMessage writes a message to the server.
-func (c *Client) WriteMessage(msg Message) error {
+// SendMessage sends a message to the server.
+func (c *Client) SendMessage(msg Message) error {
 	deadline := time.Now().Add(time.Minute)
 	if err := c.conn.SetWriteDeadline(deadline); err != nil {
 		return err
@@ -96,21 +96,21 @@ func (c *Client) WriteMessage(msg Message) error {
 	return err
 }
 
-// Write writes a message to the server with the given command and arguments.
-func (c *Client) Write(cmd string, args ...string) error {
-	return c.WriteMessage(Message{Command: cmd, Arguments: args})
+// Send sends a message to the server with the given command and arguments.
+func (c *Client) Send(cmd string, args ...string) error {
+	return c.SendMessage(Message{Command: cmd, Arguments: args})
 }
 
-// Read reads the next message from the server.
-// Read never returns a PING command;
+// Next returns the next message from the server.
+// It never returns a PING command;
 // the client responds to PINGs automatically.
-func (c *Client) Read() (Message, error) {
+func (c *Client) Next() (Message, error) {
 	for {
 		switch msg, err := read(c.in); {
 		case err != nil:
 			return Message{}, err
 		case msg.Command == PING:
-			if err := c.Write(PONG, msg.Arguments...); err != nil {
+			if err := c.Send(PONG, msg.Arguments...); err != nil {
 				return Message{}, err
 			}
 		default:
