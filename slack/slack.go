@@ -197,10 +197,14 @@ func (c *Client) GroupsList() ([]Channel, error) {
 }
 
 // PostMessage posts a message to the server with as the given username.
-func (c *Client) PostMessage(username, channel, text string) error {
+func (c *Client) PostMessage(username, iconurl, channel, text string) error {
+	if iconurl != "" {
+		iconurl = "icon_url=" + iconurl
+	}
 	var resp Response
 	err := c.do(&resp, "chat.postMessage",
 		"username="+username,
+		iconurl,
 		"as_user=false",
 		"channel="+channel,
 		"text="+text)

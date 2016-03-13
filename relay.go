@@ -62,13 +62,14 @@ func main() {
 			}
 		case msg := <-fromIRC:
 			server := strings.SplitN(*ircServer, ":", 2)[0]
-			var who string
+			var who, iconurl string
 			if msg.who == "" {
 				who = server
 			} else {
 				who = msg.who + "@" + server
+				iconurl = "https://raw.githubusercontent.com/velour/relay/master/resource/icon.jpg"
 			}
-			if err := slackClient.PostMessage(who, channelID, msg.text); err != nil {
+			if err := slackClient.PostMessage(who, iconurl, channelID, msg.text); err != nil {
 				log.Println("slack failed to post message:", err)
 			}
 		}
