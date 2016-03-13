@@ -47,14 +47,6 @@ type Channel struct {
 	IsArchived bool   `json:"is_archived"`
 }
 
-// A Group object describes a slack group or private channel.
-type Group struct {
-	ID string `json:"id"`
-	// Name is the name of the private channel.
-	Name       string `json:"name"`
-	IsArchived bool   `json:"is_archived"`
-}
-
 // A Client represents a connection to the slack API.
 type Client struct {
 	token   string
@@ -189,10 +181,10 @@ func (c *Client) ChannelsList() ([]Channel, error) {
 }
 
 // GroupsList returns a list of all slack groups — private channels.
-func (c *Client) GroupsList() ([]Group, error) {
+func (c *Client) GroupsList() ([]Channel, error) {
 	var resp struct {
 		Response
-		Groups []Group `json:"groups"`
+		Groups []Channel `json:"groups"`
 	}
 	if err := c.do(&resp, "groups.list"); err != nil {
 		return nil, err
