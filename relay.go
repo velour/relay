@@ -65,9 +65,10 @@ func main() {
 			var who, iconurl string
 			if msg.who == "" {
 				who = server
+				iconurl = "https://raw.githubusercontent.com/velour/relay/master/resource/servericon.png"
 			} else {
 				who = msg.who + "@" + server
-				iconurl = "https://raw.githubusercontent.com/velour/relay/master/resource/icon.jpg"
+				iconurl = "https://raw.githubusercontent.com/velour/relay/master/resource/usericon.png"
 			}
 			if err := slackClient.PostMessage(who, iconurl, channelID, msg.text); err != nil {
 				log.Println("slack failed to post message:", err)
