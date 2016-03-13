@@ -191,6 +191,37 @@ func startIRC(ch chan<- message) *irc.Client {
 				}
 				ch <- message{channel: channel, text: who + " joined"}
 
+			case irc.NICK:
+				if len(msg.Arguments) < 1 {
+					break
+				}
+				from := msg.Origin
+				to := msg.Arguments[0]
+				ch <- message{text: from + " is now " + to}
+
+			case irc.QUIT:
+				who := msg.Origin
+				var why string
+				if len(msg.Arguments) > 0 {
+					why = msg.Arguments[0]
+				}
+				if why != "" {
+					ch <- message{text: who + " quit: " + why}
+				} else {
+					ch <- message{text: who + " quit"}
+				}
+
+			case irc.PART:
+				if len(msg.Arguments) < 1 {
+					break
+				}
+				who := msg.Origin
+				channel := msg.Arguments[0]
+				if channel != *ircChannel {
+					break
+				}
+				ch <- message{channel: channel, text: who + " parted"}
+
 			case irc.PRIVMSG:
 				if len(msg.Arguments) < 2 {
 					break
