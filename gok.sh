@@ -32,7 +32,4 @@ e=$(tempfile)
 touch $e
 diff $o $e > /dev/null || { rm $e; fail; }
 
-echo Leaks?
-ls /tmp | egrep "edit" 2>&1 > $o && fail
-
 rm $o $e
