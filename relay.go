@@ -173,7 +173,7 @@ func startIRC(ch chan<- message) *irc.Client {
 		log.Fatalln("irc failed to send JOIN:", err)
 	}
 
-	talkers := make(map[string]bool)
+	talkers := map[string]bool{*ircNick: true}
 
 	go func() {
 		defer close(ch)
