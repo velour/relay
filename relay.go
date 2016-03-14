@@ -173,6 +173,8 @@ func startIRC(ch chan<- message) *irc.Client {
 		log.Fatalln("irc failed to send JOIN:", err)
 	}
 
+	talkers := make(map[string]bool)
+
 	go func() {
 		defer close(ch)
 		for {
@@ -187,6 +189,9 @@ func startIRC(ch chan<- message) *irc.Client {
 					break
 				}
 				who := msg.Origin
+				if !talkers[who] {
+					break
+				}
 				channel := msg.Arguments[0]
 				if channel != *ircChannel {
 					break
@@ -197,12 +202,19 @@ func startIRC(ch chan<- message) *irc.Client {
 				if len(msg.Arguments) < 1 {
 					break
 				}
-				from := msg.Origin
+				who := msg.Origin
+				if !talkers[who] {
+					break
+				}
 				to := msg.Arguments[0]
-				ch <- message{text: from + " is now " + to}
+				talkers[to] = true
+				ch <- message{text: who + " is now " + to}
 
 			case irc.QUIT:
 				who := msg.Origin
+				if !talkers[who] {
+					break
+				}
 				var why string
 				if len(msg.Arguments) > 0 {
 					why = msg.Arguments[0]
@@ -218,6 +230,9 @@ func startIRC(ch chan<- message) *irc.Client {
 					break
 				}
 				who := msg.Origin
+				if !talkers[who] {
+					break
+				}
 				channel := msg.Arguments[0]
 				if channel != *ircChannel {
 					break
@@ -229,6 +244,7 @@ func startIRC(ch chan<- message) *irc.Client {
 					break
 				}
 				who := msg.Origin
+				talkers[who] = true
 				channel := msg.Arguments[0]
 				text := msg.Arguments[1]
 				if channel != *ircChannel {
