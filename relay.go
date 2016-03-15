@@ -67,7 +67,7 @@ func main() {
 				who = server
 				iconurl = "https://raw.githubusercontent.com/velour/relay/master/resource/servericon.png"
 			} else {
-				who = msg.who + "@" + server
+				who = msg.who
 				iconurl = "https://raw.githubusercontent.com/velour/relay/master/resource/usericon.png"
 			}
 			if err := slackClient.PostMessage(who, iconurl, channelID, msg.text); err != nil {
