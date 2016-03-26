@@ -42,6 +42,16 @@ func fullname() string {
 	return un.Name
 }
 
+var icons = []string{
+	"https://raw.githubusercontent.com/velour/relay/master/resource/usericon.png",
+	"https://raw.githubusercontent.com/velour/relay/master/resource/usericon1.png",
+	"https://raw.githubusercontent.com/velour/relay/master/resource/usericon2.png",
+	"https://raw.githubusercontent.com/velour/relay/master/resource/usericon3.png",
+	"https://raw.githubusercontent.com/velour/relay/master/resource/usericon4.png",
+	"https://raw.githubusercontent.com/velour/relay/master/resource/usericon5.png",
+	"https://raw.githubusercontent.com/velour/relay/master/resource/usericon6.png",
+}
+
 func main() {
 	flag.Parse()
 
@@ -69,7 +79,11 @@ func main() {
 				iconurl = "https://raw.githubusercontent.com/velour/relay/master/resource/servericon.png"
 			} else {
 				who = msg.who
-				iconurl = "https://raw.githubusercontent.com/velour/relay/master/resource/usericon.png"
+				var h int
+				for _, r := range who {
+					h = int(r) + 31*h
+				}
+				iconurl = icons[h%len(icons)]
 			}
 			if err := slackClient.PostMessage(who, iconurl, channelID, msg.text); err != nil {
 				log.Println("slack failed to post message:", err)
