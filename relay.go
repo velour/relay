@@ -2,6 +2,7 @@ package main
 
 import (
 	"flag"
+	"html"
 	"log"
 	"os/user"
 	"strings"
@@ -142,6 +143,7 @@ func startSlack(ch chan<- message) (c *slack.Client, channelID string) {
 				if channel != channelID || user != userID {
 					continue
 				}
+				text = unescape(text)
 				log.Printf("slack sending message\n%#v\n\n", event)
 				ch <- message{who: *slackNick, channel: *slackChannel, text: text}
 			case "presence_change",
@@ -155,6 +157,10 @@ func startSlack(ch chan<- message) (c *slack.Client, channelID string) {
 	}()
 
 	return c, channelID
+}
+
+func unescape(str string) string {
+	return html.UnescapeString(str)
 }
 
 func startIRC(ch chan<- message) *irc.Client {
