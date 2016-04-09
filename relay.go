@@ -6,6 +6,7 @@ import (
 	"log"
 	"os/user"
 	"strings"
+	"time"
 
 	"github.com/velour/relay/irc"
 	"github.com/velour/relay/slack"
@@ -193,7 +194,7 @@ func startIRC(ch chan<- message) *irc.Client {
 		log.Fatalln("irc failed to send JOIN:", err)
 	}
 
-	talkers := map[string]bool{*ircNick: true}
+	talkers := make(map[string]time.Time)
 
 	go func() {
 		defer close(ch)
@@ -209,7 +210,8 @@ func startIRC(ch chan<- message) *irc.Client {
 					break
 				}
 				who := msg.Origin
-				if !talkers[who] {
+				when := talkers[who]
+				if who != *ircNick && time.Since(when) > time.Hour {
 					break
 				}
 				channel := msg.Arguments[0]
@@ -223,16 +225,18 @@ func startIRC(ch chan<- message) *irc.Client {
 					break
 				}
 				who := msg.Origin
-				if !talkers[who] {
+				when := talkers[who]
+				if who != *ircNick && time.Since(when) > time.Hour {
 					break
 				}
 				to := msg.Arguments[0]
-				talkers[to] = true
+				talkers[to] = when
 				ch <- message{text: who + " is now " + to}
 
 			case irc.QUIT:
 				who := msg.Origin
-				if !talkers[who] {
+				when := talkers[who]
+				if who != *ircNick && time.Since(when) > time.Hour {
 					break
 				}
 				var why string
@@ -250,7 +254,8 @@ func startIRC(ch chan<- message) *irc.Client {
 					break
 				}
 				who := msg.Origin
-				if !talkers[who] {
+				when := talkers[who]
+				if who != *ircNick && time.Since(when) > time.Hour {
 					break
 				}
 				channel := msg.Arguments[0]
@@ -264,7 +269,7 @@ func startIRC(ch chan<- message) *irc.Client {
 					break
 				}
 				who := msg.Origin
-				talkers[who] = true
+				talkers[who] = time.Now()
 				channel := msg.Arguments[0]
 				text := msg.Arguments[1]
 				if channel != *ircChannel {
